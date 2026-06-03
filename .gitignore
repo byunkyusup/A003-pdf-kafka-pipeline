@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# 파이프라인 출력물 (런타임 생성)
+output/*.csv
+
+# OS
+.DS_Store

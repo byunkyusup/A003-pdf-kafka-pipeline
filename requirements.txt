@@ -1,0 +1,2 @@
+confluent-kafka>=2.5.0
+pdfplumber>=0.11.0
