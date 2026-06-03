@@ -41,6 +41,9 @@ class PipelineConfig:
     output_csv: str = field(
         default_factory=lambda: _env("OUTPUT_CSV", "output/extracted.csv")
     )
+    # CSV 인코딩. 기본 utf-8-sig는 BOM을 붙여 Excel에서 한글이 깨지지 않게 한다.
+    # 순수 UTF-8이 필요하면 CSV_ENCODING=utf-8 로 오버라이드한다.
+    csv_encoding: str = field(default_factory=lambda: _env("CSV_ENCODING", "utf-8-sig"))
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
 
 

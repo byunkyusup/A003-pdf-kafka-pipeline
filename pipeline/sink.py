@@ -22,8 +22,10 @@ class CsvSink:
     컨텍스트 매니저로 사용하면 파일 핸들과 헤더를 안전하게 관리한다.
     """
 
-    def __init__(self, output_csv: str) -> None:
+    def __init__(self, output_csv: str, encoding: str = "utf-8-sig") -> None:
+        # encoding 기본 utf-8-sig: BOM을 붙여 Excel에서 한글이 깨지지 않게 한다.
         self._path = output_csv
+        self._encoding = encoding
         self._file = None
         self._writer: csv.DictWriter | None = None
         self._written = 0
@@ -32,7 +34,7 @@ class CsvSink:
         os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         # 파일이 없을 때만 헤더를 쓴다(append 안전).
         write_header = not os.path.exists(self._path) or os.path.getsize(self._path) == 0
-        self._file = open(self._path, "a", newline="", encoding="utf-8")
+        self._file = open(self._path, "a", newline="", encoding=self._encoding)
         # CSV에 없는 키(full_text 등)는 무시한다.
         self._writer = csv.DictWriter(
             self._file, fieldnames=CSV_FIELDS, extrasaction="ignore"

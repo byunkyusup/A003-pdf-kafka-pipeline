@@ -140,6 +140,7 @@ python run_pipeline.py all         # 발행 + 적재 한 번에
 | `KAFKA_CONSUMER_TIMEOUT_MS` | `10000` | 신규 메시지 대기 후 종료 (ms) |
 | `PDF_DIR` | `sample_pdfs` | 입력 PDF 디렉토리 |
 | `OUTPUT_CSV` | `output/extracted.csv` | 출력 CSV 경로 |
+| `CSV_ENCODING` | `utf-8-sig` | CSV 인코딩 (Excel 한글 호환용 BOM 포함) |
 
 ---
 
@@ -161,6 +162,33 @@ f8b8a876cc574f3c,report_q1.pdf,1,128,Q1 2026 Operations Report,2026-06-03T03:51:
 > DB 저장 주석을 해제하면 그대로 적재할 수 있도록 설계했습니다.
 
 ---
+
+## 🇰🇷 한글 폰트 지원
+
+파이프라인은 **추출 → 발행 → 적재 전 구간이 UTF-8** 기반이라 한글 PDF를 그대로 지원합니다.
+
+| 단계 | 처리 |
+|------|------|
+| 추출 (`extractor.py`) | `pdfplumber`가 한글 PDF 텍스트를 그대로 추출 |
+| 발행 (`producer.py`) | `json.dumps(..., ensure_ascii=False)` → 한글 비이스케이프 직렬화 |
+| 적재 (`sink.py`) | CSV를 `utf-8-sig`(BOM)로 기록 → **Excel에서 열어도 한글이 깨지지 않음** |
+
+> 순수 UTF-8이 필요하면 `CSV_ENCODING=utf-8` 로 BOM을 끌 수 있습니다.
+
+### 한글 샘플 PDF 생성 (Pretendard)
+
+코어 폰트(Helvetica)는 latin-1만 지원하므로 한글을 렌더링하려면 유니코드 폰트를 임베드해야 합니다.
+저장소에는 **Pretendard TTF**(OFL 라이선스)가 `fonts/`에 번들되어 있습니다.
+
+```bash
+pip install fpdf2                       # 샘플 생성 전용 (런타임 의존성 아님)
+python scripts/make_korean_sample.py    # → sample_pdfs/report_kr.pdf
+python run_pipeline.py all              # 한글 PDF → Kafka → CSV
+```
+
+> ⚠️ fpdf2로 PDF를 만들 땐 **TTF**를 쓰세요. OTF/CFF는 임베드는 되지만
+> `pdfminer`가 글리프를 디코딩하지 못해 추출 결과가 0자가 되는 경우가 있습니다
+> (본 저장소에서 검증한 이슈).
 
 ## 🗄️ DB 저장 활성화 방법
 

@@ -46,7 +46,7 @@ def run_consumer(config: PipelineConfig | None = None) -> int:
     last_message_at = time.monotonic()
 
     try:
-        with CsvSink(config.output_csv) as sink:
+        with CsvSink(config.output_csv, encoding=config.csv_encoding) as sink:
             while True:
                 msg = consumer.poll(timeout=_POLL_INTERVAL_SEC)
 
