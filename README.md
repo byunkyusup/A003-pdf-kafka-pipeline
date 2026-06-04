@@ -1,9 +1,11 @@
-# A003 · PDF → Kafka 지식 파이프라인
+# A003 · PDF → Kafka → Obsidian 지식 파이프라인
 
-> PDF 문서를 자동 추출해 **Apache Kafka**로 스트리밍하고, 컨슈머가 선택한 싱크로 적재하는 데이터 파이프라인입니다.
-> 두 가지 출력 모드를 지원합니다:
-> - **`csv`** (기본) — 추출 결과를 CSV로 적재 (DB 저장 스텁은 주석으로 보존)
-> - **`obsidian`** — **로컬 LLM(Ollama)** 으로 요약·태그를 보강해 **Obsidian 지식 노트**(frontmatter · `[[위키링크]]` · 태그 MOC)로 생성
+> PDF 문서를 자동 추출해 **Apache Kafka**로 스트리밍하고, **로컬 LLM(Ollama)** 으로 요약·태그를 보강해
+> **Obsidian 지식 노트**(frontmatter · `[[위키링크]]` · 태그 MOC)로 적재하는 데이터 파이프라인입니다.
+>
+> 출력 싱크는 `SINK` 환경변수로 교체할 수 있습니다:
+> - **`obsidian`** — LLM 보강 후 Obsidian vault에 지식 노트 생성 *(메인)*
+> - **`csv`** — 추출 결과를 CSV로 적재 (DB 저장 스텁은 주석으로 보존)
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
