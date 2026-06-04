@@ -12,3 +12,6 @@ vault/MOCs/*.md
 
 # OS
 .DS_Store
+
+# Obsidian 앱 설정
+.obsidian/

@@ -55,7 +55,9 @@ _PROMPT_TEMPLATE = """당신은 지식 관리 도우미입니다. 아래 문서�
 def _normalize_tag(raw: str) -> str:
     """태그를 위키링크/파일명 안전 형태로 정규화한다(공백→하이픈, 특수문자 제거)."""
     cleaned = re.sub(r"[^\w가-힣\- ]", "", raw).strip().lower()
-    return re.sub(r"\s+", "-", cleaned)
+    # 공백→하이픈으로 바꾸고 앞뒤·중복 하이픈을 정리한다(예: "- q1 2026" → "q1-2026").
+    slug = re.sub(r"\s+", "-", cleaned)
+    return re.sub(r"-{2,}", "-", slug).strip("-")
 
 
 def _coerce_result(payload: dict) -> EnrichmentResult:

@@ -219,6 +219,11 @@ flowchart LR
 생성된 노트는 태그를 `[[위키링크]]`로 연결하고, 같은 태그를 가진 문서들은 **태그 MOC** 노트로 묶여
 Obsidian **그래프뷰에서 문서들이 주제 중심으로 연결된 지식망**으로 나타납니다.
 
+![Obsidian 그래프뷰 — 문서 노트와 태그 MOC가 위키링크로 연결된 지식망](docs/graph-view.png)
+
+> 위 그래프는 PDF 3건을 Ollama(`llama3.2:3b`)로 보강해 생성한 실제 vault를 Obsidian 그래프뷰로 연 것입니다.
+> 각 문서 노트가 LLM이 추출한 태그(`operations-report`, `결제`, `안정성검증` 등) MOC와 연결됩니다.
+
 ### 실행
 
 ```bash
