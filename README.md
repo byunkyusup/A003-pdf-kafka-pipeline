@@ -1,11 +1,15 @@
-# A003 · PDF → Kafka → CSV Pipeline
+# A003 · PDF → Kafka 지식 파이프라인
 
-> PDF 문서를 자동 추출해 **Apache Kafka**로 스트리밍하고, 컨슈머가 결과를 **CSV**로 적재하는 데이터 파이프라인입니다.
-> DB 저장 로직은 요구사항에 따라 **주석 처리**되어 있으며, 실제 출력은 CSV로 떨어집니다.
+> PDF 문서를 자동 추출해 **Apache Kafka**로 스트리밍하고, 컨슈머가 선택한 싱크로 적재하는 데이터 파이프라인입니다.
+> 두 가지 출력 모드를 지원합니다:
+> - **`csv`** (기본) — 추출 결과를 CSV로 적재 (DB 저장 스텁은 주석으로 보존)
+> - **`obsidian`** — **로컬 LLM(Ollama)** 으로 요약·태그를 보강해 **Obsidian 지식 노트**(frontmatter · `[[위키링크]]` · 태그 MOC)로 생성
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
   <img alt="Kafka" src="https://img.shields.io/badge/Apache%20Kafka-confluent--kafka-231F20?logo=apachekafka&logoColor=white">
+  <img alt="LLM" src="https://img.shields.io/badge/LLM-Ollama-000000?logo=ollama&logoColor=white">
+  <img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-vault-7C3AED?logo=obsidian&logoColor=white">
   <img alt="Status" src="https://img.shields.io/badge/E2E-passing-2ea44f">
 </p>
 
@@ -26,22 +30,27 @@ flowchart LR
 
     K{{"🟥 Kafka Topic<br/>pdf-documents"}}
 
-    subgraph CONS["⚙️ Consumer (consumer.py)"]
-        SINK["CsvSink<br/>레코드 → 행 매핑"]
+    subgraph CONS["⚙️ Consumer (consumer.py) — SINK 분기"]
+        CSV["CsvSink"]
+        LLM["🧠 LLM 보강<br/>(Ollama)"] --> OBS["ObsidianSink"]
     end
 
     OUT[("📄 output/extracted.csv")]
+    VAULT[("📒 Obsidian vault<br/>notes + 태그 MOC")]
     DB[("🗄️ PostgreSQL")]
 
     P1 --> EX
     P2 --> EX
     EX -->|"JSON value<br/>key = doc_id"| K
-    K -->|"poll() 루프"| SINK
-    SINK --> OUT
-    SINK -. "save_to_db()<br/>주석 처리 (비활성)" .-> DB
+    K -->|"SINK=csv"| CSV
+    K -->|"SINK=obsidian"| LLM
+    CSV --> OUT
+    OBS --> VAULT
+    CSV -. "save_to_db()<br/>주석 처리 (비활성)" .-> DB
 
     style DB stroke-dasharray: 5 5,color:#999,stroke:#999
     style K fill:#231F20,color:#fff
+    style LLM fill:#4B2EAD,color:#fff
 ```
 
 ### 전달 보장 (Delivery Guarantee)
@@ -76,10 +85,12 @@ sequenceDiagram
 |------|------|
 | **멱등 식별** | 메시지 key = `doc_id`(파일명 + 내용 SHA-256 해시) → 동일 문서는 같은 파티션으로 라우팅, 재처리 식별 가능 |
 | **정확히 한 번 발행** | Producer `acks=all` + `enable.idempotence=True` |
-| **at-least-once 소비** | Consumer 수동 커밋 — CSV 적재 성공 건만 오프셋 커밋 |
-| **장애 격리** | 한 PDF 파싱 실패가 전체 파이프라인을 멈추지 않음 (파일 단위 예외 격리) |
+| **at-least-once 소비** | Consumer 수동 커밋 — 싱크 적재 성공 건만 오프셋 커밋 |
+| **교체 가능한 싱크** | `SINK` 환경변수로 `csv` ↔ `obsidian` 전환, 동일 스트림을 다른 출력으로 |
+| **LLM 보강 (provider 추상화)** | `obsidian` 모드에서 Ollama로 요약·태그·키워드 생성, `mock`으로 의존성 없이 검증 |
+| **장애 격리** | 한 PDF 파싱/보강 실패가 전체 파이프라인을 멈추지 않음 (건 단위 예외 격리) |
 | **배치성 종료** | `consumer_timeout_ms` 동안 신규 메시지 없으면 컨슈머 자동 종료 |
-| **설정 외부화** | 브로커·토픽·경로 전부 환경 변수로 오버라이드, 시크릿 하드코딩 없음 |
+| **설정 외부화** | 브로커·토픽·경로·LLM 전부 환경 변수로 오버라이드, 시크릿 하드코딩 없음 |
 | **DB 확장 지점** | `full_text`를 payload에만 보관 → 주석 해제만으로 DB 적재 활성화 |
 
 ---
@@ -99,8 +110,13 @@ A003-pdf-kafka-pipeline/
 │   ├── enrich.py          # LLM 보강 (Ollama 기본 + mock)
 │   ├── obsidian_sink.py   # 마크다운 노트 + 태그 MOC 생성
 │   └── sink.py            # CSV 적재 + DB 저장 스텁(주석)
+├── scripts/
+│   └── make_korean_sample.py  # 한글 샘플 PDF 생성기 (Pretendard)
+├── fonts/                 # 번들 폰트 (Pretendard, OFL)
+├── docs/                  # README 자산 (graph-view.png)
 ├── sample_pdfs/           # 입력 PDF (테스트 픽스처 포함)
-└── output/                # extracted.csv 생성 위치
+├── output/                # extracted.csv 생성 위치 (csv 모드)
+└── vault/                 # Obsidian 노트·MOC 생성 위치 (obsidian 모드)
 ```
 
 ---
@@ -227,19 +243,21 @@ Obsidian **그래프뷰에서 문서들이 주제 중심으로 연결된 지식�
 ### 실행
 
 ```bash
-# 1) Ollama 준비 (로컬 LLM)
-#    https://ollama.com 설치 후:
-ollama pull llama3.1
-ollama serve   # http://localhost:11434
+# 1) Ollama 준비 (로컬 LLM) — https://ollama.com
+ollama pull llama3.2:3b          # 경량 모델 (약 2GB)
+ollama serve                      # http://localhost:11434
 
 # 2) Obsidian 싱크로 파이프라인 실행
-export SINK=obsidian
+export SINK=obsidian OLLAMA_MODEL=llama3.2:3b
 python run_pipeline.py produce      # PDF → Kafka
 python run_pipeline.py consume      # Kafka → LLM 보강 → vault/
 
 # Ollama 없이 구조만 확인하려면 mock provider:
 SINK=obsidian LLM_PROVIDER=mock python run_pipeline.py all
 ```
+
+> ⚠️ **macOS Homebrew 주의**: `brew install ollama`(formula)는 추론 실행기(`llama-server`)가
+> 빠져 500 에러가 날 수 있습니다. `brew install --cask ollama`(Ollama.app) 또는 공식 설치본을 쓰세요.
 
 생성된 `vault/` 폴더를 Obsidian에서 **vault로 열면** 노트와 그래프를 바로 확인할 수 있습니다.
 
@@ -282,18 +300,27 @@ keywords: [추출 정확도, 안정성, ...]
 
 ## ✅ E2E 테스트 결과
 
-로컬 Kafka(KRaft) 브로커 기준, PDF 2건 → Kafka → CSV 적재 검증 완료:
+로컬 Kafka(KRaft) 브로커 기준, 두 싱크 모두 검증 완료.
+
+**CSV 모드** — PDF 2건 → Kafka → CSV:
 
 ```text
 ========== PRODUCE ==========
-발행: invoice_0042.pdf (doc_id=e953006323a7b6bf)
-발행: report_q1.pdf (doc_id=f8b8a876cc574f3c)
 발행 완료: 2건
 ========== CONSUME ==========
-적재: invoice_0042.pdf (doc_id=e953006323a7b6bf)
-적재: report_q1.pdf (doc_id=f8b8a876cc574f3c)
 CSV 적재 완료: 2행 → output/extracted.csv
 소비 완료: 2건
 ```
 
-검증 항목: `doc_id`/`char_count` 정상 채움, `full_text`는 CSV 미포함, 헤더 1회만 기록.
+**Obsidian 모드** — PDF 3건 → Kafka → Ollama(`llama3.2:3b`) 보강 → vault:
+
+```text
+========== CONSUME (Ollama 보강) ==========
+싱크: obsidian
+적재: invoice_0042.pdf (doc_id=e953006323a7b6bf)
+적재: report_kr.pdf (doc_id=8f5fe9c3a74a5070)
+적재: report_q1.pdf (doc_id=f8b8a876cc574f3c)
+Obsidian 적재 완료: 노트 3개, 태그 MOC 6개 → vault/notes
+```
+
+검증 항목: CSV는 `doc_id`/`char_count` 정상·`full_text` 미포함·헤더 1회, Obsidian은 의미론적 태그 생성 + 그래프뷰 연결 확인(위 스크린샷).
