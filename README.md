@@ -95,7 +95,9 @@ A003-pdf-kafka-pipeline/
 │   ├── config.py          # 환경변수 기반 설정 (불변 dataclass)
 │   ├── extractor.py       # PDF → 구조화 레코드(dict)
 │   ├── producer.py        # PDF 추출 → Kafka 토픽 발행
-│   ├── consumer.py        # 토픽 구독 → CSV 적재
+│   ├── consumer.py        # 토픽 구독 → 싱크 분기(csv|obsidian)
+│   ├── enrich.py          # LLM 보강 (Ollama 기본 + mock)
+│   ├── obsidian_sink.py   # 마크다운 노트 + 태그 MOC 생성
 │   └── sink.py            # CSV 적재 + DB 저장 스텁(주석)
 ├── sample_pdfs/           # 입력 PDF (테스트 픽스처 포함)
 └── output/                # extracted.csv 생성 위치
@@ -141,6 +143,11 @@ python run_pipeline.py all         # 발행 + 적재 한 번에
 | `PDF_DIR` | `sample_pdfs` | 입력 PDF 디렉토리 |
 | `OUTPUT_CSV` | `output/extracted.csv` | 출력 CSV 경로 |
 | `CSV_ENCODING` | `utf-8-sig` | CSV 인코딩 (Excel 한글 호환용 BOM 포함) |
+| `SINK` | `csv` | 출력 싱크 선택: `csv` \| `obsidian` |
+| `LLM_PROVIDER` | `ollama` | 보강 LLM: `ollama` \| `mock` (obsidian 싱크에서만 사용) |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama 서버 주소 |
+| `OLLAMA_MODEL` | `llama3.1` | Ollama 모델명 |
+| `VAULT_DIR` | `vault` | Obsidian vault 출력 디렉토리 |
 
 ---
 
@@ -189,6 +196,75 @@ python run_pipeline.py all              # 한글 PDF → Kafka → CSV
 > ⚠️ fpdf2로 PDF를 만들 땐 **TTF**를 쓰세요. OTF/CFF는 임베드는 되지만
 > `pdfminer`가 글리프를 디코딩하지 못해 추출 결과가 0자가 되는 경우가 있습니다
 > (본 저장소에서 검증한 이슈).
+
+## 🧠 Obsidian 지식 베이스 모드
+
+`SINK=obsidian`으로 실행하면 CSV 대신 **Obsidian vault에 구조화된 지식 노트**를 생성합니다.
+컨슈머가 메시지를 받으면 **LLM(Ollama)** 으로 요약·핵심포인트·태그·키워드를 보강한 뒤,
+YAML frontmatter + `[[위키링크]]` + 태그별 MOC를 갖춘 마크다운 노트로 적재합니다.
+
+```mermaid
+flowchart LR
+    K{{"🟥 Kafka Topic"}} -->|poll| C["⚙️ Consumer"]
+    C -->|"full_text"| L["🧠 LLM 보강<br/>(Ollama / mock)<br/>요약·태그·키워드"]
+    L --> S["📝 ObsidianSink"]
+    S --> N[("📒 vault/notes/*.md<br/>frontmatter + [[위키링크]]")]
+    S --> M[("🗂️ vault/MOCs/*.md<br/>태그별 Map of Content")]
+    N -. "태그 위키링크" .-> M
+
+    style K fill:#231F20,color:#fff
+    style L fill:#4B2EAD,color:#fff
+```
+
+생성된 노트는 태그를 `[[위키링크]]`로 연결하고, 같은 태그를 가진 문서들은 **태그 MOC** 노트로 묶여
+Obsidian **그래프뷰에서 문서들이 주제 중심으로 연결된 지식망**으로 나타납니다.
+
+### 실행
+
+```bash
+# 1) Ollama 준비 (로컬 LLM)
+#    https://ollama.com 설치 후:
+ollama pull llama3.1
+ollama serve   # http://localhost:11434
+
+# 2) Obsidian 싱크로 파이프라인 실행
+export SINK=obsidian
+python run_pipeline.py produce      # PDF → Kafka
+python run_pipeline.py consume      # Kafka → LLM 보강 → vault/
+
+# Ollama 없이 구조만 확인하려면 mock provider:
+SINK=obsidian LLM_PROVIDER=mock python run_pipeline.py all
+```
+
+생성된 `vault/` 폴더를 Obsidian에서 **vault로 열면** 노트와 그래프를 바로 확인할 수 있습니다.
+
+### 생성 노트 예시
+
+```markdown
+---
+title: 2026년 1분기 운영 보고서
+source_file: report_q1.pdf
+doc_id: a1f3...
+created: 2026-06-04T...
+tags: [운영-보고서, kafka, 데이터-파이프라인]
+keywords: [추출 정확도, 안정성, ...]
+---
+
+# 2026년 1분기 운영 보고서
+
+## 요약
+1분기 운영 지표와 파이프라인 안정성 검증 결과를 요약합니다.
+
+## 핵심 포인트
+- 총 처리 문서 1,284건
+- 평균 추출 정확도 97.3%
+
+## 태그
+[[운영-보고서]] [[kafka]] [[데이터-파이프라인]]
+
+## 원문 미리보기
+...
+```
 
 ## 🗄️ DB 저장 활성화 방법
 

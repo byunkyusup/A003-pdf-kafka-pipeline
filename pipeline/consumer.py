@@ -9,12 +9,35 @@ import time
 from confluent_kafka import Consumer, KafkaError, KafkaException
 
 from .config import PipelineConfig
+from .enrich import build_provider
+from .obsidian_sink import ObsidianSink
 from .sink import CsvSink
 
 logger = logging.getLogger(__name__)
 
 # poll() 1회 대기 시간(초). 이 간격으로 idle 종료 여부를 확인한다.
 _POLL_INTERVAL_SEC = 1.0
+
+
+def _build_sink_handler(config: PipelineConfig):
+    """설정에 맞는 (싱크 컨텍스트매니저, 레코드 처리 함수)를 만든다.
+
+    obsidian 싱크는 적재 전에 LLM 보강 단계를 거친다.
+    """
+    if config.sink == "obsidian":
+        provider = build_provider(config.llm)
+
+        def handle(record: dict, sink: ObsidianSink) -> None:
+            text = record.get("full_text") or record.get("text_preview", "")
+            enrichment = provider.enrich(text, record.get("title", ""))
+            sink.write(record, enrichment)
+
+        return ObsidianSink(config.vault), handle
+
+    def handle_csv(record: dict, sink: CsvSink) -> None:
+        sink.write(record)
+
+    return CsvSink(config.output_csv, encoding=config.csv_encoding), handle_csv
 
 
 def build_consumer(config: PipelineConfig) -> Consumer:
@@ -33,12 +56,14 @@ def build_consumer(config: PipelineConfig) -> Consumer:
 
 
 def run_consumer(config: PipelineConfig | None = None) -> int:
-    """토픽을 소비해 CSV로 적재한다. 적재 건수를 반환한다.
+    """토픽을 소비해 선택된 싱크(csv|obsidian)로 적재한다. 적재 건수를 반환한다.
 
     consumer_timeout_ms 동안 새 메시지가 없으면 루프가 종료된다(배치성 실행).
     """
     config = config or PipelineConfig()
     idle_timeout_sec = config.kafka.consumer_timeout_ms / 1000.0
+    sink_cm, handle = _build_sink_handler(config)
+    logger.info("싱크: %s", config.sink)
 
     consumer = build_consumer(config)
     consumer.subscribe([config.kafka.topic])
@@ -46,7 +71,7 @@ def run_consumer(config: PipelineConfig | None = None) -> int:
     last_message_at = time.monotonic()
 
     try:
-        with CsvSink(config.output_csv, encoding=config.csv_encoding) as sink:
+        with sink_cm as sink:
             while True:
                 msg = consumer.poll(timeout=_POLL_INTERVAL_SEC)
 
@@ -66,7 +91,7 @@ def run_consumer(config: PipelineConfig | None = None) -> int:
                 last_message_at = time.monotonic()
                 try:
                     record = json.loads(msg.value().decode("utf-8"))
-                    sink.write(record)
+                    handle(record, sink)
                 except Exception as exc:
                     # 적재 실패 시 오프셋을 커밋하지 않아 재처리가 가능하다.
                     logger.error("적재 실패 (offset=%s): %s", msg.offset(), exc)

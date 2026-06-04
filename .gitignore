@@ -7,6 +7,8 @@ venv/
 
 # 파이프라인 출력물 (런타임 생성)
 output/*.csv
+vault/notes/*.md
+vault/MOCs/*.md
 
 # OS
 .DS_Store

@@ -34,10 +34,36 @@ class KafkaConfig:
 
 
 @dataclass(frozen=True)
+class LlmConfig:
+    """LLM 보강 설정 (불변).
+
+    provider: "ollama"(기본) | "mock"(외부 의존성 없는 검증용).
+    """
+
+    provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "ollama"))
+    ollama_url: str = field(
+        default_factory=lambda: _env("OLLAMA_URL", "http://localhost:11434")
+    )
+    model: str = field(default_factory=lambda: _env("OLLAMA_MODEL", "llama3.1"))
+    timeout_sec: int = field(default_factory=lambda: int(_env("LLM_TIMEOUT_SEC", "120")))
+
+
+@dataclass(frozen=True)
+class VaultConfig:
+    """Obsidian vault 출력 설정 (불변)."""
+
+    vault_dir: str = field(default_factory=lambda: _env("VAULT_DIR", "vault"))
+    notes_subdir: str = field(default_factory=lambda: _env("VAULT_NOTES_SUBDIR", "notes"))
+    moc_subdir: str = field(default_factory=lambda: _env("VAULT_MOC_SUBDIR", "MOCs"))
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     """디렉토리 및 출력 경로 설정 (불변)."""
 
     pdf_dir: str = field(default_factory=lambda: _env("PDF_DIR", "sample_pdfs"))
+    # 출력 싱크 선택: "csv"(기본) | "obsidian"
+    sink: str = field(default_factory=lambda: _env("SINK", "csv"))
     output_csv: str = field(
         default_factory=lambda: _env("OUTPUT_CSV", "output/extracted.csv")
     )
@@ -45,6 +71,8 @@ class PipelineConfig:
     # 순수 UTF-8이 필요하면 CSV_ENCODING=utf-8 로 오버라이드한다.
     csv_encoding: str = field(default_factory=lambda: _env("CSV_ENCODING", "utf-8-sig"))
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
+    llm: LlmConfig = field(default_factory=LlmConfig)
+    vault: VaultConfig = field(default_factory=VaultConfig)
 
 
 # CSV 컬럼 순서 — DB 스키마와 1:1 매핑되도록 한 곳에서 관리한다.
@@ -58,5 +86,8 @@ CSV_FIELDS: tuple[str, ...] = (
     "text_preview",
 )
 
-# text_preview에 담을 본문 미리보기 최대 길이
+# text_preview / Obsidian 노트 원문 미리보기에 담을 본문 최대 길이
 PREVIEW_MAX_CHARS = 500
+
+# LLM에 넘길 본문 최대 길이(토큰 폭주·비용 방지)
+LLM_INPUT_MAX_CHARS = 6000
